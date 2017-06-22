@@ -1,112 +1,83 @@
 package main
 
+import (
+	"fmt"
+	"math/rand"
+	"time"
+)
+
+const (
+	DIMEN     int    = 4
+	QUIT      byte   = 'q'
+	EMPTY     int    = '_'
+	BORDER    string = "-----------------"
+	SPACE     string = "____"
+	EMPTY_ROW string = "|                 |"
+	UP        byte   = 'w'
+	DOWN      byte   = 's'
+	LEFT      byte   = 'a'
+	RIGHT     byte   = 'd'
+)
+
+var (
+	generator = rand.New(rand.NewSource(time.Now().UnixNano()))
+	board     [DIMEN][DIMEN]int
+)
+
 func main() {
-	
-}
+	//These will finish before user can send to Scanf, no need to wait
+	go printWelcomeMessage();
+	go initializeBoard();
+	go printBoard();
 
-/* 
-//My C Implementation of 2048 to translate to Go
-
-#include <stdio.h>
-#include <stdlib.h>
-#include <stdbool.h>
-#include <time.h>
-
-const int DIMEN = 4;
-const int QUIT = 'q';
-const int EMPTY = '_';
-const char * BORDER = "-----------------";
-const char * SPACE = "____";
-const char * EMPTY_ROW = "|                 |";
-const char UP = 'w';
-const char DOWN = 's';
-const char LEFT = 'a';
-const char RIGHT = 'd';
-
-void printWelcomeMessage();
-int** allocateMemory();
-void initializeBoard(int **);
-void addRandomVals(int **);
-bool boardIsFull(int** board);
-bool chooseFour();
-bool inputIsValid(char);
-char toLowerCase(char);
-void updateBoard(char, int**);
-void shiftUp(int**);
-void shiftDown(int**);
-void shiftLeft(int**);
-void shiftRight(int**);
-void printBoard(int **);
-void printSpacing(int);
-bool gameOver(int **);
-void freeMemory(int**);
-
-int main() {
-	srand(time(NULL));
-
-	printWelcomeMessage();
-
-	int** board = allocateMemory();
-	initializeBoard(board);
-	printBoard(board);
-
-	char input;
-	while(true) {
-		do{
-			scanf("%c", &input);
+	var input byte;
+	for true {
+		fmt.Scanf("%c", &input)
+		input = toLowerCase(input)
+		for !inputIsValid(input) {
+			fmt.Scanf("%c", &input);
 			input = toLowerCase(input);
 		}
-		while(!inputIsValid(input));
+	
+		if input == QUIT { break; }
 
-		if (input == QUIT) { break; }
+		updateBoard(input);
+		addRandomVals();
+		printBoard();
 
-		updateBoard(input, board);
-		addRandomVals(board);
-		printBoard(board);
-
-		if (gameOver(board)) {
-			printf("Game Over!\n");
+		if (gameOver()) {
+			fmt.Printf("Game Over!\n");
 			break;
 		}
 	}
-	freeMemory(board);
-	return EXIT_SUCCESS;
 }
 
 //Print message specifying gameplay instructions to user
-void printWelcomeMessage() {
-	printf("\nWecome to 2048\n");
-	printf("To move the tiles, use the WASD keys followed by a return\n");
-	printf("To quit at any time, press Q\n");
-}
-
-//Allocate heap memory for board
-int** allocateMemory() {
-	int **board = malloc(DIMEN * sizeof(int *));
-	for (int i = 0; i < DIMEN; i++) {
-		board[i] = malloc(DIMEN * sizeof(int));
-	}
-	return board;
+func printWelcomeMessage() {
+	fmt.Printf("\nWecome to 2048\n");
+	fmt.Printf("To move the tiles, use the WASD keys followed by a return\n");
+	fmt.Printf("To quit at any time, press Q\n");
 }
 
 //Populate board array with empty spaces and initial tiles
-void initializeBoard(int** board) {
-	for (int r = 0; r < DIMEN; r++){
-		for (int c = 0; c < DIMEN; c++){
+func initializeBoard() {
+	for r := 0; r < DIMEN; r++ {
+		for c := 0; c < DIMEN; c++ {
 			board[r][c] = EMPTY;
 		}
 	}
 
 	//Choose two distinct coordinate pairs
-	int x1, x2, y1, y2;
-	x1 = rand() % DIMEN;
-	x2 = rand() % DIMEN;
-	y1 = rand() % DIMEN;
+	var x1, x2, y1, y2 int;
+	x1 = generator.Intn(DIMEN)
+	x2 = generator.Intn(DIMEN)
+	y1 = generator.Intn(DIMEN)
+	y2 = generator.Intn(DIMEN);
 
-	do {
-		y2 = rand() % DIMEN;
+	for y1 == y2 {
+		y2 = generator.Intn(DIMEN);
 	}
-	while (y1 == y2);
+	
 
 	if (chooseFour()) {
 		board[y1][x1] = 4;
@@ -122,18 +93,18 @@ void initializeBoard(int** board) {
 }
 
 //Add new random tile to board (more likely 2 than 4)  IF POSSIBLE!
-void addRandomVals(int** board) {
-	if (boardIsFull(board)) {
+func addRandomVals() {
+	if (boardIsFull()) {
 		return;
 	}
 
-	int x1, y1;
-	do {
-		x1 = rand() % DIMEN;
-		y1 = rand() % DIMEN;
+	var x1, y1 = generator.Intn(DIMEN), generator.Intn(DIMEN)
+	for board[y1][x1] != EMPTY {
+		x1 = generator.Intn(DIMEN);
+		y1 = generator.Intn(DIMEN);
 	}
-	while(board[y1][x1] != EMPTY);
-
+	
+	
 	if (chooseFour()) {
 		board[y1][x1] = 4;
 	} else {
@@ -142,28 +113,28 @@ void addRandomVals(int** board) {
 }
 
 //Determine if the board is full (no empty tiles)
-bool boardIsFull(int** board) {
-	int fullnessCounter = 0;
-	for (int r = 0; r < DIMEN; r++){
-		for (int c = 0; c < DIMEN; c++) {
-			if (board[r][c] == EMPTY) {
+func boardIsFull() bool{
+	fullnessCounter := 0;
+	for r := 0; r < DIMEN; r++ {
+		for c := 0; c < DIMEN; c++ {
+			if board[r][c] == EMPTY {
 				fullnessCounter++;
 			}
 		}
 	}
-	if (fullnessCounter == 0) {
+	if fullnessCounter == 0 {
 		return true;
 	}
 	return false;
 }
 
 //Probability of adding a 4 instead of a 2 to the board after a move
-bool chooseFour() {
-	return (rand() % DIMEN == 3);
+func chooseFour() bool{
+	return (generator.Intn(DIMEN) == 3);
 }
 
 //Filter input for valid characters, q + wasd
-bool inputIsValid(char input) {
+func inputIsValid(input byte) bool{
 
 	if (input == UP) {
 		return true;
@@ -180,34 +151,35 @@ bool inputIsValid(char input) {
 	return false;
 }
 
-//Convert char to lowercase 
-char toLowerCase(char input) {
-    if ((input >= 65) && (input <= 90))
-        input += 32; 
-    return input;  
+//Convert byte to lowercase 
+func toLowerCase(input byte) byte {
+   	if input >= 65 && input <= 90 {
+    	    input += 32 
+	}
+   	return input;  
 }
 
 
 //Shift board in direction specified by user
-void updateBoard(char command, int** board) {
+func updateBoard(command byte) {
 
 	if (command == UP) {
-		shiftUp(board);
+		shiftUp();
 	} else if (command == LEFT) {
-		shiftLeft(board);
+		shiftLeft();
 	} else if (command == DOWN) {
-		shiftDown(board);
+		shiftDown();
 	} else {
-		shiftRight(board);
+		shiftRight();
 	}
 }
 
 //Shifts tiles up in grid according to 2048 rules
-void shiftUp(int** board) {
-	for (int r = 0; r < DIMEN - 1; r++) {
-		for (int c = 0; c < DIMEN; c++) {
+func shiftUp() {
+	for r := 0; r < DIMEN - 1; r++ {
+		for c := 0; c < DIMEN; c++ {
 			if (board[r][c] == EMPTY) {
-				for (int k = 1; k + r < 4; k++){
+				for k := 1; k + r < 4; k++ {
 					if (board[r + k][c] != EMPTY){
 						board[r][c] = board[r + k][c];
 						board[r + k][c] = EMPTY;
@@ -216,12 +188,13 @@ void shiftUp(int** board) {
 					}
 				}
 			} else {
-				for (int k = 1; k + r < 4; k++) {
+				for k := 1; k + r < 4; k++ {
 					if (board[k + r][c] == board[r][c]) {
 						board[r][c] *= 2;
 						board[k + r][c] = EMPTY;
 						break;
-					} if (board[k + r][c] != EMPTY) {
+					} 
+					if (board[k + r][c] != EMPTY) {
 						break;
 					}
 				}
@@ -231,11 +204,11 @@ void shiftUp(int** board) {
 }
 
 //Shifts tiles down in grid according to 2048 rules
-void shiftDown(int** board) {
-	for (int r = DIMEN - 1; r > 0; r--) {
-		for (int c = 0; c < DIMEN; c++) {
+func shiftDown() {
+	for r := DIMEN - 1; r > 0; r-- {
+		for c := 0; c < DIMEN; c++ {
 			if (board[r][c] == EMPTY) {
-				for (int k = 1; r - k >= 0; k++){
+				for k := 1; r - k >= 0; k++{
 					if (board[r - k][c] != EMPTY){
 						board[r][c] = board[r - k][c];
 						board[r - k][c] = EMPTY;
@@ -244,12 +217,13 @@ void shiftDown(int** board) {
 					}
 				}
 			} else {
-				for (int k = 1; r - k >= 0; k++) {
+				for k := 1; r - k >= 0; k++ {
 					if (board[r - k][c] == board[r][c]) {
 						board[r][c] *= 2;
 						board[r - k][c] = EMPTY;
 						break;
-					} if (board[r - k][c] != EMPTY) {
+					} 
+					if (board[r - k][c] != EMPTY) {
 						break;
 					}
 				}
@@ -259,12 +233,12 @@ void shiftDown(int** board) {
 }
 
 //Shifts tiles to left in grid according to 2048 rules
-void shiftLeft(int** board) {
-	for (int r = 0; r < DIMEN; r++) {
-		for (int c = 0; c < DIMEN - 1; c++) {
+func shiftLeft() {
+	for r := 0; r < DIMEN; r++ {
+		for c := 0; c < DIMEN - 1; c++ {
 
 			if (board[r][c] == EMPTY) {
-				for (int k = 1; k + c < 4; k++){
+				for k := 1; k + c < 4; k++{
 					if (board[r][c + k] != EMPTY){
 						board[r][c] = board[r][c + k];
 						board[r][c + k] = EMPTY;
@@ -273,12 +247,13 @@ void shiftLeft(int** board) {
 					}
 				}
 			} else {
-				for (int k = 1; k + c < 4; k++) {
+				for k := 1; k + c < 4; k++ {
 					if (board[r][c + k] == board[r][c]) {
 						board[r][c] *= 2;
 						board[r][c + k] = EMPTY;
 						break;
-					} if (board[r][c + k] != EMPTY) {
+					} 
+					if (board[r][c + k] != EMPTY) {
 						break;
 					}
 				}
@@ -288,11 +263,11 @@ void shiftLeft(int** board) {
 }
 
 //Shifts tiles to right in grid according to 2048 rules
-void shiftRight(int** board) {
-	for (int r = 0; r < DIMEN; r++) {
-		for (int c = DIMEN - 1; c > 0; c--) {
-			if (board[r][c] == EMPTY) {
-				for (int k = 1; c - k >= 0; k++){
+func shiftRight() {
+	for r := 0; r < DIMEN; r++ {
+		for c := DIMEN - 1; c > 0; c-- {
+			if board[r][c] == EMPTY {
+				for k := 1; c - k >= 0; k++ {
 					if (board[r][c - k] != EMPTY){
 						board[r][c] = board[r][c - k];
 						board[r][c - k] = EMPTY;
@@ -301,12 +276,13 @@ void shiftRight(int** board) {
 					}
 				}
 			} else {
-				for (int k = 1; c - k >= 0; k++) {
+				for k := 1; c - k >= 0; k++ {
 					if (board[r][c - k] == board[r][c]) {
 						board[r][c] *= 2;
 						board[r][c - k] = EMPTY;
 						break;
-					} if (board[r][c - k] != EMPTY) {
+					} 
+					if (board[r][c - k] != EMPTY) {
 						break;
 					}
 				}
@@ -316,41 +292,41 @@ void shiftRight(int** board) {
 }
 
 //Prints board in nice format to console
-void printBoard(int** board) {
-	printf(" %s\n", BORDER);
-	for (int r = 0; r < DIMEN; r++) {
-		printf("%s\n", EMPTY_ROW);
-		printf("| ");
+func printBoard() {
+	fmt.Printf(" %s\n", BORDER)
+	for r := 0; r < DIMEN; r++ {
+		fmt.Printf("%s\n", EMPTY_ROW)
+		fmt.Printf("| ")
 
-		for (int c = 0; c < DIMEN; c++) {
-			if (board[r][c] == EMPTY) {
-				printf("%s", SPACE);
-			} else{ 
-				printf("%d", board[r][c]);
-				printSpacing(board[r][c]);
+		for c := 0; c < DIMEN; c++ {
+			if board[r][c] == EMPTY {
+				fmt.Printf("%s", SPACE)
+			} else {
+				fmt.Printf("%d", board[r][c])
+				printSpacing(board[r][c])
 			}
 		}
-		printf("|\n");
+		fmt.Printf("|\n")
 	}
-	printf(" %s\n", BORDER);
+	fmt.Printf(" %s\n", BORDER)
 }
 
 //Print spacing based on length of number (assumes 4 digits max number)
-void printSpacing(int printedInt) {
-	if (printedInt / 100 > 0) {
-		printf(" ");
-	} else if (printedInt / 10 > 0) {
-		printf("  ");
+func printSpacing(printedInt int) {
+	if printedInt/100 > 0 {
+		fmt.Printf(" ")
+	} else if printedInt/10 > 0 {
+		fmt.Printf("  ")
 	} else {
-		printf("   ");
+		fmt.Printf("   ")
 	}
 }
 
 //Checks if no valid moves are left in board, signifies end of game
-bool gameOver(int ** board) {
+func gameOver() bool{
 	
-	for (int r = 0; r < DIMEN; r++) {
-		for (int c = 0; c < DIMEN; c++) {
+	for r := 0; r < DIMEN; r++ {
+		for c := 0; c < DIMEN; c++ {
 			if (board[r][c] == EMPTY) {
 				return false;
 			}
@@ -379,13 +355,3 @@ bool gameOver(int ** board) {
 
 	return true;
 }
-
-//Frees dynamic memory allocated for 2048 board
-void freeMemory(int** toDelete) {
-	for (int i = 0; i < DIMEN; i++) {
-		free(toDelete[i]);
-	}
-	free(toDelete);
-}
-
-*/
