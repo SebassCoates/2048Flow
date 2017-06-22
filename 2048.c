@@ -1,21 +1,21 @@
-/* 
-//My C Implementation of 2048 to translate to Go
+ /*
+ //My C Implementation of 2048 to translate to Go
 
 #include <stdio.h>
 #include <stdlib.h>
 #include <stdbool.h>
 #include <time.h>
 
-const int 
-const int 
-const int 
-const char
-const char
-const char
-const char
-const char
-const char
-const char
+const int DIMEN = 4;
+const int QUIT = 'q';
+const int EMPTY = '_';
+const char * BORDER = "-----------------";
+const char * SPACE = "____";
+const char * EMPTY_ROW = "|                 |";
+const char UP = 'w';
+const char DOWN = 's';
+const char LEFT = 'a';
+const char RIGHT = 'd';
 
 void printWelcomeMessage();
 int** allocateMemory();
