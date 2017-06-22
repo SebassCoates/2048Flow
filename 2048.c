@@ -153,7 +153,7 @@ bool boardIsFull(int** board) {
 
 //Probability of adding a 4 instead of a 2 to the board after a move
 bool chooseFour() {
-	return (rand() % DIMEN == 3);
+	return (rand() % 10 == 0);
 }
 
 //Filter input for valid characters, q + wasd
