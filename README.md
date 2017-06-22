@@ -1,4 +1,4 @@
-#2048Flow
+# 2048Flow
 
 2048Flow uses machine learning implemented through TensorFlow in Go to 
 optimally play the one-popular game 2048. 
