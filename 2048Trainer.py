@@ -7,6 +7,7 @@
 #for 2048
 import random as rand
 import time as time
+import math 
 
 #Argument parsing
 import sys 
@@ -32,15 +33,19 @@ board     = np.array([[0 for x in range(DIMEN)] for y in range(DIMEN)], np.int32
 highestScore = np.array([0 for x in range(1)], np.int32)
 lastTenScores = np.array([0 for x in range(10)], np.int32)
 lastHundredScores = np.array([0 for x in range(100)], np.int32)
+lastTenTotals = np.array([0 for x in range(10)], np.int32)
+lastHundredTotals = np.array([0 for x in range(100)], np.int32)
 rand.seed(time.time())
 xPlot = list()
 yPlot = list()
+xPlot2 = list()
+yPlot2 = list()
 scores = {} 
 scores["prevHigh"] = 0 
 scores["prevTotal"] = 0 
 scores["currHigh"] = 0 
 scores["currTotal"] = 0 
-rateOfDecrease = 500 #Rate of decrease in random choice (Higher = slower rate)
+rateOfDecrease = 50 #Rate of decrease in random choice (Higher = slower rate)
 
 #Formatting information for cmbl file (For viewing results in Logger Pro)
 cmblFmt1 = """<Document>
@@ -502,6 +507,7 @@ b
 
 #Populate board array with empty spaces and initial tiles
 def initializeBoard() :
+	scores["currTotal"] = 0
 	for r in range(DIMEN):
 		for c in range(DIMEN):
 			board[r][c] = EMPTY
@@ -517,14 +523,14 @@ def initializeBoard() :
 		y2 = rand.randint(0, DIMEN - 1)
 
 	if chooseFour():
-		board[y1][x1] = 4 
-	else: 
 		board[y1][x1] = 2
+	else: 
+		board[y1][x1] = 1
 
 	if chooseFour():
-		board[y2][x2] = 4 
+		board[y2][x2] = 2 
 	else:
-		board[y2][x2] = 2
+		board[y2][x2] = 1
 
 #Add new random tile to board (more likely 2 than 4)  IF POSSIBLE!
 def addRandomVals():
@@ -537,9 +543,9 @@ def addRandomVals():
 		y1 = rand.randint(0, DIMEN - 1)
 
 	if chooseFour():
-		board[y1][x1] = 4
-	else:
 		board[y1][x1] = 2
+	else:
+		board[y1][x1] = 1
 
 #Determine if the board is full (no empty tiles)
 def boardIsFull():
@@ -608,8 +614,8 @@ def shiftUp():
 			else:
 				for k in range(1, 4 - r, 1):
 					if (board[k+r][c] == board[r][c]):
-						board[r][c] *= 2
-						scores["currTotal"] += board[r][c]
+						board[r][c] += 1
+						scores["currTotal"] += math.pow(2, board[r][c])
 						board[k+r][c] = EMPTY
 						break
 					if (board[k+r][c] != EMPTY):
@@ -630,8 +636,8 @@ def shiftDown():
 			else:
 				for k in (1, r + 1, 1):
 					if (board[r-k][c] == board[r][c]): 
-						board[r][c] *= 2
-						scores["currTotal"] += board[r][c]
+						board[r][c] += 1
+						scores["currTotal"] += math.pow(2, board[r][c])
 						board[r-k][c] = EMPTY
 						break
 					if (board[r-k][c] != EMPTY):
@@ -653,8 +659,8 @@ def shiftLeft():
 			else: 
 				for k in range(1, 4 - c, 1):
 					if (board[r][c+k] == board[r][c]): 
-						board[r][c] *= 2
-						scores["currTotal"] += board[r][c]
+						board[r][c] += 1
+						scores["currTotal"] += math.pow(2, board[r][c])
 						board[r][c+k] = EMPTY
 						break
 					
@@ -683,8 +689,8 @@ def shiftRight():
 			else:
 				for k in range(1, c + 1, 1):
 					if (board[r][c-k] == board[r][c]):
-						board[r][c] *= 2
-						scores["currTotal"] += board[r][c]
+						board[r][c] += 1
+						scores["currTotal"] += math.pow(2, board[r][c])
 						board[r][c-k] = EMPTY
 						break
 					
@@ -767,18 +773,19 @@ def updateState(command):
 	scores["prevHigh"] = scores["currHigh"]
 	
 	if (scores["currTotal"] > scores["prevTotal"]):
-		reward += scores["currTotal"] - scores["prevTotal"]
+		#POTENTIALLY OVEREMPHASIZES HIGH SCORE
+		reward += math.log(scores["currTotal"] - scores["prevTotal"],2)# emphasizes high score over high tile
 
 	scores["prevTotal"] = scores["currTotal"]
 
 	if gameOver():
 		if (scores["currHigh"] > highestScore[0]):
 			highestScore[0] = scores["currHigh"]
-		return (-32, True)
+		return (-10, True)
 	else:
 		return (reward, False)
 
-def main():
+def main(): #FIX REWARD RETURN  - SCALE DOWN BY LOG
 	tf.reset_default_graph()
 	sess = tf.Session()
 
@@ -793,12 +800,11 @@ def main():
 				graph = tf.get_default_graph()
 				W = graph.get_tensor_by_name("W:0")
 				break; 
-	else: #initialize network randomly
+	else: #initialize network
 		W = tf.Variable(tf.random_uniform([4,4],0,0.01), name="W")
 
 	#These lines establish the feed-forward part of the network used to choose actions
 	inputs1 = tf.placeholder(shape=[4,4],dtype=tf.float32)
-	#W = tf.Variable(tf.random_uniform([4,4],0,0.01))
 	Qout = tf.matmul(inputs1,W)
 	predict = tf.argmax(Qout,1)
 
@@ -822,22 +828,29 @@ def main():
 			s = np.copy(board)
 			#print(s)
 			rAll = 0
-			d = False
+			done = False
 			j = 0
 			while (True):
 				#Choose an action by greedily (with e chance of random action) from the Q-network
-				a,allQ = sess.run([predict,Qout],feed_dict={inputs1:s})
+				#print(s)
+				#print(np.nanmax(s))
+				#print(s/np.nanmax(s))
+				a,allQ = sess.run([predict,Qout],feed_dict={inputs1:s/4096}) #np.nanmax(s)
+				#allQ /= np.nanmax(allQ)
+				#print(allQ)
+				#BUG: allQ = NAN
 
 				if np.random.rand(1) < e:
 					a[0] = rand.randint(0,3)
 				
 				#Get new state and reward from environment
-				r,d = updateState(a[0])
+				r,done = updateState(a[0])
+				#print(r)
 				s1 = board
 				#print(s1)
 
 				#Obtain the Q' values by feeding the new state through our network
-				Q1 = sess.run(Qout,feed_dict={inputs1:s1})
+				Q1 = sess.run(Qout,feed_dict={inputs1:s1/4096})
 
 				#Obtain maxQ' and set our target value for chosen action.
 				maxQ1 = np.max(Q1)
@@ -845,34 +858,42 @@ def main():
 				targetQ[0,a[0]] = r + y*maxQ1
 
 				#Train our network using target and predicted Q values
-				_,W1 = sess.run( [updateModel,W], feed_dict={inputs1:s,nextQ:targetQ} )
+				_,W1 = sess.run( [updateModel,W], feed_dict={inputs1:s/4096,nextQ:targetQ} )
 				rAll += r
 				s = s1
 
-				if d == True:
+				if done:
 				#Reduce chance of random action as we train the model.
 					e = 1./((i/rateOfDecrease) + 10)
 					gameCounter += 1
 					break
-
+			#print("Final Score: %d" % scores["currTotal"])
 			lastTenScores[gameCounter % 10] = scores["currHigh"]
 			lastHundredScores[gameCounter % 100] = scores["currHigh"]
+			lastTenTotals[gameCounter % 10] = scores["currTotal"]
+			lastHundredTotals[gameCounter % 100] = scores["currTotal"]
+
 			if (gameCounter % 10 == 0):
-				print("Last 10 average = %d" % np.average(lastTenScores))
+				print("%d Games Completed" % gameCounter)
+				#print("Last 10 average high = %d" % np.average(lastTenScores))
 
 			#print("Curr score = %d" % highestTileValue())
 			if (gameCounter % 100  == 0):
+				print(allQ)
 				avg = np.average(lastHundredScores)
-				print("Last 100 average = %d" % avg)
-				print("Highest score yet= %d" % highestScore[0])
+				avg2 = np.average(lastHundredTotals)
+				#print("Last 100 average = %d" % avg)
+				print("Highest score = %d" % math.pow(2,highestScore[0]))
 				xPlot.append(gameCounter/100 - 1)
 				yPlot.append(avg)
+				xPlot2.append(gameCounter/100 - 1)
+				yPlot2.append(avg2)
 				
 
 			if (gameCounter % 1000 == 0):
 				saver.save(sess, "2048Training", global_step=gameCounter)
 
-				fileOut = open("100avg_over_time_log.cmbl", 'w')
+				fileOut = open("HighAVG.cmbl", 'w')
 				fileOut.write(cmblFmt1)
 				fileOut.write("\n")
 				for i in range(len(xPlot)):
@@ -882,6 +903,22 @@ def main():
 				fileOut.write("\n")
 				for i in range(len(yPlot)):	
 					fileOut.write(str(yPlot[i]))
+					fileOut.write("\n")
+				fileOut.write(cmblFmt3)
+				fileOut.write("\n")
+				fileOut.close()
+
+
+				fileOut = open("ScoreAVG.cmbl", 'w')
+				fileOut.write(cmblFmt1)
+				fileOut.write("\n")
+				for i in range(len(xPlot2)):
+					fileOut.write(str(xPlot2[i]))
+					fileOut.write("\n")
+				fileOut.write(cmblFmt2)
+				fileOut.write("\n")
+				for i in range(len(yPlot2)):	
+					fileOut.write(str(yPlot2[i]))
 					fileOut.write("\n")
 				fileOut.write(cmblFmt3)
 				fileOut.write("\n")
