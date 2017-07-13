@@ -528,10 +528,9 @@ def initializeBoard() :
 		board[y1][x1] = 1
 
 	if chooseFour():
-		board[y2][x2] = 2 
+		board[y2][x2] = 2
 	else:
 		board[y2][x2] = 1
-
 #Add new random tile to board (more likely 2 than 4)  IF POSSIBLE!
 def addRandomVals():
 	if boardIsFull():
@@ -615,7 +614,7 @@ def shiftUp():
 				for k in range(1, 4 - r, 1):
 					if (board[k+r][c] == board[r][c]):
 						board[r][c] += 1
-						scores["currTotal"] += math.pow(2, board[r][c])
+						scores["currTotal"] += pow(2,board[r][c])
 						board[k+r][c] = EMPTY
 						break
 					if (board[k+r][c] != EMPTY):
@@ -637,7 +636,7 @@ def shiftDown():
 				for k in (1, r + 1, 1):
 					if (board[r-k][c] == board[r][c]): 
 						board[r][c] += 1
-						scores["currTotal"] += math.pow(2, board[r][c])
+						scores["currTotal"] += pow(2,board[r][c])
 						board[r-k][c] = EMPTY
 						break
 					if (board[r-k][c] != EMPTY):
@@ -660,7 +659,7 @@ def shiftLeft():
 				for k in range(1, 4 - c, 1):
 					if (board[r][c+k] == board[r][c]): 
 						board[r][c] += 1
-						scores["currTotal"] += math.pow(2, board[r][c])
+						scores["currTotal"] += pow(2,board[r][c])
 						board[r][c+k] = EMPTY
 						break
 					
@@ -690,7 +689,7 @@ def shiftRight():
 				for k in range(1, c + 1, 1):
 					if (board[r][c-k] == board[r][c]):
 						board[r][c] += 1
-						scores["currTotal"] += math.pow(2, board[r][c])
+						scores["currTotal"] += pow(2,board[r][c])
 						board[r][c-k] = EMPTY
 						break
 					
@@ -773,15 +772,14 @@ def updateState(command):
 	scores["prevHigh"] = scores["currHigh"]
 	
 	if (scores["currTotal"] > scores["prevTotal"]):
-		#POTENTIALLY OVEREMPHASIZES HIGH SCORE
-		reward += math.log(scores["currTotal"] - scores["prevTotal"],2)# emphasizes high score over high tile
+		reward += scores["currTotal"] - scores["prevTotal"]# emphasizes high score over high tile
 
 	scores["prevTotal"] = scores["currTotal"]
 
 	if gameOver():
 		if (scores["currHigh"] > highestScore[0]):
 			highestScore[0] = scores["currHigh"]
-		return (-10, True)
+		return (-32, True)
 	else:
 		return (reward, False)
 
@@ -867,12 +865,11 @@ def main(): #FIX REWARD RETURN  - SCALE DOWN BY LOG
 					e = 1./((i/rateOfDecrease) + 10)
 					gameCounter += 1
 					break
-			#print("Final Score: %d" % scores["currTotal"])
-			lastTenScores[gameCounter % 10] = scores["currHigh"]
-			lastHundredScores[gameCounter % 100] = scores["currHigh"]
+					
+			lastTenScores[gameCounter % 10] = pow(2, scores["currHigh"])
+			lastHundredScores[gameCounter % 100] = pow(2, scores["currHigh"])
 			lastTenTotals[gameCounter % 10] = scores["currTotal"]
 			lastHundredTotals[gameCounter % 100] = scores["currTotal"]
-
 			if (gameCounter % 10 == 0):
 				print("%d Games Completed" % gameCounter)
 				#print("Last 10 average high = %d" % np.average(lastTenScores))
@@ -882,8 +879,7 @@ def main(): #FIX REWARD RETURN  - SCALE DOWN BY LOG
 				print(allQ)
 				avg = np.average(lastHundredScores)
 				avg2 = np.average(lastHundredTotals)
-				#print("Last 100 average = %d" % avg)
-				print("Highest score = %d" % math.pow(2,highestScore[0]))
+				print("Highest score = %d" % pow(2,highestScore[0]))
 				xPlot.append(gameCounter/100 - 1)
 				yPlot.append(avg)
 				xPlot2.append(gameCounter/100 - 1)
