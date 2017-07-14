@@ -16,6 +16,9 @@ import sys
 import numpy as np
 import tensorflow as tf
 
+#for rewarding old states
+from collections import deque
+
 #Constants for 2048 
 DIMEN      = 4
 QUIT       = 'q'
@@ -767,19 +770,19 @@ def updateState(command):
 	reward = 0
 	scores["currHigh"] = highestTileValue();
 	if (scores["currHigh"] > scores["prevHigh"]):
-		reward = scores["currHigh"]
+		reward = pow(2, scores["currHigh"])
 
 	scores["prevHigh"] = scores["currHigh"]
 	
 	if (scores["currTotal"] > scores["prevTotal"]):
-		reward += scores["currTotal"] - scores["prevTotal"]# emphasizes high score over high tile
+		reward += 0#scores["currTotal"] - scores["prevTotal"]# emphasizes high score over high tile
 
 	scores["prevTotal"] = scores["currTotal"]
 
 	if gameOver():
 		if (scores["currHigh"] > highestScore[0]):
 			highestScore[0] = scores["currHigh"]
-		return (-32, True)
+		return (-pow(2, scores["currHigh"]), True)
 	else:
 		return (reward, False)
 
@@ -813,6 +816,10 @@ def main(): #FIX REWARD RETURN  - SCALE DOWN BY LOG
 	updateModel = trainer.minimize(loss)
 
 	saver = tf.train.Saver([W])
+	prevStateDeque = deque()
+	stateDeque = deque()
+	resultDeque = deque()
+	otherResultDeque = deque() #shit name
 
 	y = .99
 	e = 0.1
@@ -825,7 +832,7 @@ def main(): #FIX REWARD RETURN  - SCALE DOWN BY LOG
 			initializeBoard() #resets board to beginning state
 			s = np.copy(board)
 			#print(s)
-			rAll = 0
+			#rAll = 0
 			done = False
 			j = 0
 			while (True):
@@ -847,6 +854,17 @@ def main(): #FIX REWARD RETURN  - SCALE DOWN BY LOG
 				s1 = board
 				#print(s1)
 
+				if r == 0: #likely rewarded from future decision
+					prevStateDeque.append(s)
+					stateDeque.append(s1)
+					resultDeque.append(allQ)
+					otherResultDeque.append(a[0])
+					if (len(prevStateDeque) > pow(2, scores["currHigh"])):
+						prevStateDeque.popleft()
+						stateDeque.popleft()
+						resultDeque.popleft()
+						otherResultDeque.popleft()
+
 				#Obtain the Q' values by feeding the new state through our network
 				Q1 = sess.run(Qout,feed_dict={inputs1:s1/4096})
 
@@ -857,8 +875,38 @@ def main(): #FIX REWARD RETURN  - SCALE DOWN BY LOG
 
 				#Train our network using target and predicted Q values
 				_,W1 = sess.run( [updateModel,W], feed_dict={inputs1:s/4096,nextQ:targetQ} )
-				rAll += r
+				#rAll += r
 				s = s1
+
+				if r > 0:
+					while (len(prevStateDeque) > 0):
+						r -= 1
+						#print(r)
+						Q1 = sess.run(Qout,feed_dict={inputs1:stateDeque.pop()/4096})
+
+						#Obtain maxQ' and set our target value for chosen action.
+						maxQ1 = np.max(Q1)
+						targetQ = resultDeque.pop()
+						targetQ[0,otherResultDeque.pop()] = r + y*maxQ1
+
+						#Train our network using target and predicted Q values
+						_,W1 = sess.run( [updateModel,W], feed_dict={inputs1:prevStateDeque.pop()/4096,nextQ:targetQ} )
+						#rAll += r
+
+				if r < 0:
+					while (len(prevStateDeque) > 0):
+						r += 1
+						#print(r)
+						Q1 = sess.run(Qout,feed_dict={inputs1:stateDeque.pop()/4096})
+
+						#Obtain maxQ' and set our target value for chosen action.
+						maxQ1 = np.max(Q1)
+						targetQ = resultDeque.pop()
+						targetQ[0,otherResultDeque.pop()] = r + y*maxQ1
+
+						#Train our network using target and predicted Q values
+						_,W1 = sess.run( [updateModel,W], feed_dict={inputs1:prevStateDeque.pop()/4096,nextQ:targetQ} )
+						#rAll += r
 
 				if done:
 				#Reduce chance of random action as we train the model.
