@@ -11,6 +11,7 @@ import math
 
 #Argument parsing
 import sys 
+import hashlib
 
 #for reinforcement training
 import numpy as np
@@ -31,6 +32,8 @@ DOWN       = 's'
 LEFT       = 'a'
 RIGHT      = 'd'
 
+NaN = float('nan')
+
 #Instance Variables
 board     = np.array([[0 for x in range(DIMEN)] for y in range(DIMEN)], np.int32)
 highestScore = np.array([0 for x in range(1)], np.int32)
@@ -48,7 +51,14 @@ scores["prevHigh"] = 0
 scores["prevTotal"] = 0 
 scores["currHigh"] = 0 
 scores["currTotal"] = 0 
-rateOfDecrease = 50 #Rate of decrease in random choice (Higher = slower rate)
+rateOfDecrease = .00001 #percent to subtract from randomness each game
+scoreTracker = {}
+scoreTracker["gamesSinceHighscore"] = 0
+scoreTracker["setHighScore"] = False
+tilesMatched = list()
+stateTracker = {}
+repeatedStatesList = {}
+repeatedStatesCounter= {}
 
 #Formatting information for cmbl file (For viewing results in Logger Pro)
 cmblFmt1 = """<Document>
@@ -618,6 +628,7 @@ def shiftUp():
 					if (board[k+r][c] == board[r][c]):
 						board[r][c] += 1
 						scores["currTotal"] += pow(2,board[r][c])
+						tilesMatched.append(pow(2,board[r][c]))
 						board[k+r][c] = EMPTY
 						break
 					if (board[k+r][c] != EMPTY):
@@ -640,6 +651,7 @@ def shiftDown():
 					if (board[r-k][c] == board[r][c]): 
 						board[r][c] += 1
 						scores["currTotal"] += pow(2,board[r][c])
+						tilesMatched.append(pow(2,board[r][c]))
 						board[r-k][c] = EMPTY
 						break
 					if (board[r-k][c] != EMPTY):
@@ -663,6 +675,7 @@ def shiftLeft():
 					if (board[r][c+k] == board[r][c]): 
 						board[r][c] += 1
 						scores["currTotal"] += pow(2,board[r][c])
+						tilesMatched.append(pow(2,board[r][c]))
 						board[r][c+k] = EMPTY
 						break
 					
@@ -693,6 +706,7 @@ def shiftRight():
 					if (board[r][c-k] == board[r][c]):
 						board[r][c] += 1
 						scores["currTotal"] += pow(2,board[r][c])
+						tilesMatched.append(pow(2,board[r][c]))
 						board[r][c-k] = EMPTY
 						break
 					
@@ -710,8 +724,24 @@ def printBoard():
 			if (board[r][c] == EMPTY):
 				print("%s" % SPACE , end='')
 			else:
-				print("%d" % board[r][c] , end='')
-				printSpacing(board[r][c])
+				print("%d" % math.pow(2,board[r][c]) , end='')
+				printSpacing(math.pow(2,board[r][c]))
+
+		print("|")
+	print(" %s" % BORDER)
+
+def printState(state):
+	print(" %s\n" % BORDER, end='')
+	for r in range(DIMEN):
+		print("%s" % EMPTY_ROW)
+		print("| ", end='')
+
+		for c in range(DIMEN):
+			if (state[r][c] == EMPTY):
+				print("%s" % SPACE , end='')
+			else:
+				print("%d" % math.pow(2, state[r][c]) , end='')
+				printSpacing(math.pow(2,state[r][c]))
 
 		print("|")
 	print(" %s" % BORDER)
@@ -765,7 +795,11 @@ def highestTileValue():
 
 def updateState(command):
 	updateBoard(command)
-	addRandomVals()
+
+	#if highestScore[0] in tilesMatched:
+		#printBoard()
+		#print(tilesMatched)
+		#print("highest score = %d" %highestScore[0])
 
 	reward = 0
 	scores["currHigh"] = highestTileValue();
@@ -775,18 +809,41 @@ def updateState(command):
 	scores["prevHigh"] = scores["currHigh"]
 	
 	if (scores["currTotal"] > scores["prevTotal"]):
-		reward += 0#scores["currTotal"] - scores["prevTotal"]# emphasizes high score over high tile
+		reward += 0#scores["currTotal"] - scores["prevTotal"]# emphasizes high score over high tile0#
+		#print("Score diff:")
+		#print(scores["currTotal"] - scores["prevTotal"])
 
 	scores["prevTotal"] = scores["currTotal"]
 
+	#if (scores["currHigh"] > highestScore[0]):
+	#	highestScore[0] = scores["currHigh"]
+	#	scoreTracker["setHighScore"] = True
+	#	reward = pow(2, scores["currHigh"])
+	#elif (math.pow(2,highestScore[0]) in tilesMatched):
+	#	reward = pow(2, highestScore[0])
+	#elif (math.pow(2,highestScore[0] - 1) in tilesMatched):
+	#	reward = int(math.pow(2,highestScore[0] - 1))
+
+	tilesMatched.clear()
+
 	if gameOver():
-		if (scores["currHigh"] > highestScore[0]):
+		if (scores["currHigh"] >= highestScore[0]):
 			highestScore[0] = scores["currHigh"]
-		return (-pow(2, scores["currHigh"]), True)
+			scoreTracker["setHighScore"] = True
+			print("Hit %d" % pow(2,highestScore[0]))
+			#reward = pow(2,highestScore[0])	
+			
+			scoreTracker["gamesSinceHighscore"] = 0
+			#return(reward, True)
+		else:
+			scoreTracker["gamesSinceHighscore"] += 1
+			scoreTracker["setHighScore"] = False
+		return (-pow(2, scores["currHigh"]), True) #
 	else:
 		return (reward, False)
 
 def main(): #FIX REWARD RETURN  - SCALE DOWN BY LOG
+	global board
 	tf.reset_default_graph()
 	sess = tf.Session()
 
@@ -811,131 +868,366 @@ def main(): #FIX REWARD RETURN  - SCALE DOWN BY LOG
 
 	#Below we obtain the loss by taking the sum of squares difference between the target and prediction Q values.
 	nextQ = tf.placeholder(shape=[4,4],dtype=tf.float32)
-	loss = tf.reduce_sum(tf.square(nextQ - Qout))
+	
+	with tf.name_scope("Gradient_Descent"):
+		loss = tf.reduce_sum(tf.square(nextQ - Qout))
+		tf.summary.scalar('loss', loss)
+		tf.summary.histogram('loss', loss)
 	trainer = tf.train.GradientDescentOptimizer(learning_rate=0.1)
 	updateModel = trainer.minimize(loss)
+	
+
+	updateModel = tf.summary.merge_all()
+	train_writer = tf.summary.FileWriter('/Users/CBass/go/src/2048Flow/tensorboard_results',sess.graph)
 
 	saver = tf.train.Saver([W])
-	prevStateDeque = deque()
-	stateDeque = deque()
-	resultDeque = deque()
-	otherResultDeque = deque() #shit name
+	prevStateList = list()
+	stateList = list()
+	resultList = list()
+	otherResultList = list() #shit name
 
 	y = .99
-	e = 0.1
-	numGames = 100000
+	e = 1.00
+	numGames = 1000
+	nanFix = math.pow(2, 12)
+	memLengthFactor = 1
+	minimumMemory = 50
+	#increaseRate = 4
 	with sess:
+	
 		sess.run(tf.global_variables_initializer())
 		gameCounter = 0
 		avgScore = 0
+		highCounter = 0
 		for i in range(numGames):
 			initializeBoard() #resets board to beginning state
 			s = np.copy(board)
 			#print(s)
-			#rAll = 0
+			rAll = 0
 			done = False
 			j = 0
+			numMoves = 0
+			repeatedStates = 0
 			while (True):
+				numMoves += 1
+				#print(numMoves)
 				#Choose an action by greedily (with e chance of random action) from the Q-network
 				#print(s)
 				#print(np.nanmax(s))
 				#print(s/np.nanmax(s))
-				a,allQ = sess.run([predict,Qout],feed_dict={inputs1:s/4096}) #np.nanmax(s)
+				a,allQ = sess.run([predict,Qout],feed_dict={inputs1:s/nanFix}) #np.nanmax(s)
 				#allQ /= np.nanmax(allQ)
 				#print(allQ)
 				#BUG: allQ = NAN
 
-				if np.random.rand(1) < e:
+				#Odds of random decision
+				if np.random.rand(1) < e: #True: #total randomness
 					a[0] = rand.randint(0,3)
 				
 				#Get new state and reward from environment
 				r,done = updateState(a[0])
-				#print(r)
-				s1 = board
+				#if r > 0:
+				#	print("Rewarding :%d" % r)
+				s1 = np.copy(board)
+
+				
 				#print(s1)
+				#illegalMove = False;
+				while np.array_equal(s,s1) and not done:
+					a[0] = rand.randint(0,3)
+					r,done = updateState(a[0])
+					s1 = np.copy(board)
 
-				if r == 0: #likely rewarded from future decision
-					prevStateDeque.append(s)
-					stateDeque.append(s1)
-					resultDeque.append(allQ)
-					otherResultDeque.append(a[0])
-					if (len(prevStateDeque) > pow(2, scores["currHigh"])):
-						prevStateDeque.popleft()
-						stateDeque.popleft()
-						resultDeque.popleft()
-						otherResultDeque.popleft()
+					#print("Punishing illegal move")
+					#print(a[0])
+					#print("0 = W, 1 = A, 2 = S, 3 = D")
+					#printState(s)
+					#printState(s1)
+					#illegalMove = True
+				addRandomVals() #part of updating state properly
+				s1 = np.copy(board)
 
-				#Obtain the Q' values by feeding the new state through our network
-				Q1 = sess.run(Qout,feed_dict={inputs1:s1/4096})
+				#hashCounter = 0
+				#arrayString = ""
+				#for i in range(DIMEN):
+				#	for j in range(DIMEN):
+				#		arrayString += str(s1[i][j])
+				#hashedState = arrayString
+				##print(hashedState)
 
-				#Obtain maxQ' and set our target value for chosen action.
-				maxQ1 = np.max(Q1)
-				targetQ = allQ
-				targetQ[0,a[0]] = r + y*maxQ1
+				#if hashedState in stateTracker:
+				#	repeatedStates += 1
+				#	#print("Collision")
+				#else:
+				#	pass #don't add to dictionary, save mem
+				#	#stateTracker[hashedState] = 1
 
-				#Train our network using target and predicted Q values
-				_,W1 = sess.run( [updateModel,W], feed_dict={inputs1:s/4096,nextQ:targetQ} )
+				
+
+
+				#if r == 0: #likely rewarded from future decision
+					#copy by value for storage
+				prevState = np.copy(s)
+				currState = np.copy(s1)
+				result = np.copy(allQ)
+				otherResult = np.copy(a[0])
+
+				#print("Appending")
+				prevStateList.append(prevState)
+				stateList.append(currState)
+				resultList.append(result)
+				otherResultList.append(otherResult)
+				if (scores["currHigh"] > 1):
+					if ((len(prevStateList)) > (memLengthFactor * (scores["currHigh"]))): #
+						#print("Forgetting...")
+						#print(prevState)
+						#print("Size: %d; comparison: %d" % (len(prevState), math.log(scores["currHigh"],2)))
+						#print(prevState)
+						prevStateList.pop(0)
+						stateList.pop(0)
+						resultList.pop(0)
+						otherResultList.pop(0)
+
+				#Q1 = sess.run(Qout,feed_dict={inputs1:currState/nanFix})
+##
+				##Obtain maxQ' and set our target value for chosen action.
+				#maxQ1 = np.max(Q1)
+				#targetQ = result
+				#targetQ[0,otherResult] = r + y*maxQ1
+##
+				##Train our network using target and predicted Q values
+				#summary,W1 = sess.run( [updateModel,W], feed_dict={inputs1:prevState/nanFix,nextQ:targetQ} )
 				#rAll += r
-				s = s1
+				#
+				#train_writer.add_summary(summary, gameCounter)
 
+				backwardsReward = 0
 				if r > 0:
-					while (len(prevStateDeque) > 0):
-						r -= 1
-						#print(r)
-						Q1 = sess.run(Qout,feed_dict={inputs1:stateDeque.pop()/4096})
-
+					#print("Prev state list: %d" % len(prevStateList))
+					#print("Length: %d " % len(prevStateList))
+					#print("back propagating")
+					#	print(len(prevStateList))
+					mod = int(math.log(len(prevStateList),2))
+					for i in range((len(prevStateList))):
+						#print(backwardsReward)
+						#if scoreTracker["setHighScore"]:
+						if mod == 0:
+							backwardsReward = r
+						elif i % mod == 0:
+							backwardsReward = (2 ** int(i/mod)) * (r ** 2)#- scoreTracker["gamesSinceHighscore"] / scores["currHigh"] #reward scaling
+						if i == len(prevStateList) - 1:
+							backwardsReward *= r
+						#print(backwardsReward)
+						Q1 = sess.run(Qout,feed_dict={inputs1:stateList[i]/nanFix})
+						#print()
+						#print(Q1)
+						#print()
 						#Obtain maxQ' and set our target value for chosen action.
 						maxQ1 = np.max(Q1)
-						targetQ = resultDeque.pop()
-						targetQ[0,otherResultDeque.pop()] = r + y*maxQ1
-
+						targetQ = resultList[i]
+						targetQ[0,otherResultList[i]] = backwardsReward + y*maxQ1
+#
 						#Train our network using target and predicted Q values
-						_,W1 = sess.run( [updateModel,W], feed_dict={inputs1:prevStateDeque.pop()/4096,nextQ:targetQ} )
-						#rAll += r
-
+						summary,W1 = sess.run( [updateModel,W], feed_dict={inputs1:prevStateList[i]/nanFix,nextQ:targetQ} )
+						rAll += backwardsReward
+						
+						train_writer.add_summary(summary, gameCounter)
+						#print("%d" % backwardsReward)
+						#print(backwardsReward)
+						#if scoreTracker["setHighScore"]:
+							#print("set high score")
+						#	backwardsReward += (i**2) * scoreTracker["gamesSinceHighscore"]
+							#print(backwardsReward)
+							#print("Reward of %d Added to:" % backwardsReward) 
+							#printState(stateList[i])
+						#if scores["currHigh"] == 128:
+						#	quit()
+						#print(backwardsReward)
+					#print("New Game")
+					#for state in stateList:
+					#	printState(state)
+					#print(rAll)
+#
+					#print(len(prevStateList))
+					#if scoreTracker["setHighScore"]:
+						
+					#	scoreTracker["setHighScore"] = False
+					#	scoreTracker["gamesSinceHighscore"] = 0
 				if r < 0:
-					while (len(prevStateDeque) > 0):
-						r += 1
-						#print(r)
-						Q1 = sess.run(Qout,feed_dict={inputs1:stateDeque.pop()/4096})
+					if scores["currHigh"] < highestScore[0]:
+						 #- scoreTracker["gamesSinceHighscore"] / scores["currHigh"] #reward scaling
+						#i = len(prevStateList) - int(len(prevStateList)/2)
+						#i = scores["currHigh"]
+						#i = 0
+						#modulus = memLengthFactor
+						#if (len(prevStateList)) < (int(math.log(scores["currHigh"],2)) * memLengthFactor):
+						#	modulus = len(prevStateList) / int(math.log(scores["currHigh"],2))
+						mod = int(math.log(len(prevStateList),2))
+						for i in range((len(prevStateList))):
+							#print(i)
+							#print(backwardsReward)
+							#print(mod)
+							if mod == 0:
+								backwardsReward = r
+							elif i % mod == 0:
+								backwardsReward = -int((2 ** int(i/mod)) * (2**20) / (r ** 2))#/ (r)#always negative
+								#print(backwardsReward)
+							if i == len(prevStateList) - 1:
+									backwardsReward *= 2
+							#print(backwardsReward)
+							Q1 = sess.run(Qout,feed_dict={inputs1:stateList[i]/nanFix})
+							#print()
+							#print(Q1)
+							#print()
+							#Obtain maxQ' and set our target value for chosen action.
+							maxQ1 = np.max(Q1)
+							targetQ = resultList[i]
+							targetQ[0,otherResultList[i]] = backwardsReward + y*maxQ1
+#
+							#Train our network using target and predicted Q values
+							summary,W1 = sess.run( [updateModel,W], feed_dict={inputs1:prevStateList[i]/nanFix,nextQ:targetQ} )
+							rAll += backwardsReward
+#
+							train_writer.add_summary(summary, gameCounter)
+							#backwardsReward = -i**2 * math.pow(2048/math.pow(scores["currHigh"],2),2) #/ (numMoves*2)
+							#print("Reward of %d Added to:" % backwardsReward) 
+							#printState(stateList[i])
+							#print("%d" % backwardsReward)
+							#print(rAll)
+							#i+= 1
+						#print(len(prevStateList))
+						#print("Total reward: %d" % rAll)
 
-						#Obtain maxQ' and set our target value for chosen action.
-						maxQ1 = np.max(Q1)
-						targetQ = resultDeque.pop()
-						targetQ[0,otherResultDeque.pop()] = r + y*maxQ1
+				##copy current state after backpropagating reward
+				#prevState = np.copy(s)
+				#currState = np.copy(s1)
+				#result = np.copy(allQ)
+				#otherResult = np.copy(a[0])
+			#	if r < 0:
+				#	print(rAll)
+				##print("Appending")
+				#prevStateList.append(prevState)
+				#stateList.append(currState)
+				#resultList.append(result)
+				#otherResultList.append(otherResult)
+				#if ((len(prevStateList)) > (memLengthFactor ** (math.log(scores["currHigh"],2)) + minimumMemory)): #
+				#	print("Forgetting...")
+				#	#print(prevState)
+				#	#print("Size: %d; comparison: %d" % (len(prevState), math.log(scores["currHigh"],2)))
+				#	#print(prevState)
+				#	prevStateList.pop(0)
+				#	stateList.pop(0)
+				#	resultList.pop(0)
+				#	otherResultList.pop(0)
 
-						#Train our network using target and predicted Q values
-						_,W1 = sess.run( [updateModel,W], feed_dict={inputs1:prevStateDeque.pop()/4096,nextQ:targetQ} )
-						#rAll += r
+				#r += backwardsReward
+				#if (r == NaN):
+				#	print("Reward is NaN")
+				##if (illegalMove):
+				##	r = -1000000
 
-				if done:
+				##Obtain the Q' values by feeding the new state through our network
+				#Q1 = sess.run(Qout,feed_dict={inputs1:s1/nanFix})
+
+				##Obtain maxQ' and set our target value for chosen action.
+				#maxQ1 = np.max(Q1)
+				#targetQ = allQ
+				#targetQ[0,a[0]] = 3 * r + y*maxQ1
+
+				##Train our network using target and predicted Q values
+				#_,W1 = sess.run( [updateModel,W], feed_dict={inputs1:s/nanFix,nextQ:targetQ} )
+				#rAll += r
+				s = np.copy(s1)
+
+				#if r != 0:
+				#	#pass
+				#	print("Rewarded state:")
+				#	print("Reward of %d Added to:" % r) 
+				#	printState(s1)
+				#	if r > 64:
+				#		quit()
+				if done: #or 2 ** highestTileValue() == 256:
 				#Reduce chance of random action as we train the model.
-					e = 1./((i/rateOfDecrease) + 10)
+					e -= 1.0 / numGames #numgames is constant
+					if gameCounter % 100 == 0:
+						print("Percent randomness = %f" % e)
+					#print("total reward = %d" % rAll)
+					#print("total score = %d" % math.pow(2,scores["currHigh"]))
+					if scores["currHigh"] == highestScore[0]:
+						highCounter += 1
+					#print(rAll)
 					gameCounter += 1
+					prevStateList.clear()
+					stateList.clear()
+					resultList.clear()
+					otherResultList.clear()
+					#print(repeatedStates)
 					break
-					
+
 			lastTenScores[gameCounter % 10] = pow(2, scores["currHigh"])
 			lastHundredScores[gameCounter % 100] = pow(2, scores["currHigh"])
 			lastTenTotals[gameCounter % 10] = scores["currTotal"]
 			lastHundredTotals[gameCounter % 100] = scores["currTotal"]
+		
+			sampleSize = repeatedStatesCounter.get(repeatedStates, 0)
+			
+			#if sampleSize == 0:
+			#	repeatedStatesList[repeatedStates] = scores["currHigh"]
+			#	repeatedStatesCounter[repeatedStates] = 1
+			#else:
+
+			#	curValue = repeatedStatesList.get(repeatedStates)
+			#	newValue = ((sampleSize * curValue) + scores["currHigh"]) / (sampleSize + 1)
+			#	repeatedStatesList[repeatedStates] = newValue
+			#	repeatedStatesCounter[repeatedStates] += 1
+			
+			repeatedStates = 0
+
 			if (gameCounter % 10 == 0):
-				print("%d Games Completed" % gameCounter)
-				#print("Last 10 average high = %d" % np.average(lastTenScores))
+				print("%d Games Completed; hit high %d times" % (gameCounter, highCounter))
+				highCounter = 0
+				
+				#print("Last 10 average high = %d" % np.average(lastTenTotals))
 
 			#print("Curr score = %d" % highestTileValue())
 			if (gameCounter % 100  == 0):
-				print(allQ)
+				#print(allQ)
 				avg = np.average(lastHundredScores)
 				avg2 = np.average(lastHundredTotals)
+				#print("Games since high score = %d" % scoreTracker["gamesSinceHighscore"])
 				print("Highest score = %d" % pow(2,highestScore[0]))
 				xPlot.append(gameCounter/100 - 1)
 				yPlot.append(avg)
 				xPlot2.append(gameCounter/100 - 1)
 				yPlot2.append(avg2)
-				
+
+				stateCounter = len(stateTracker)
+				percentage = 0.0
+				#for state in stateTracker:
+				#	stateCounter += 1
+				#numBoardsPossible = 11 ** 16 #assumes max highest tile can be 1024 (2^6, 16 times)
+				#print(numBoardsPossible)
+				#percentage = stateCounter /  numBoardsPossible * 100
+				#print("%d States Explored, making up %f percent of states" % (stateCounter, percentage))
 
 			if (gameCounter % 1000 == 0):
 				saver.save(sess, "2048Training", global_step=gameCounter)
+
+				fileOut = open("repeatedStates.cmbl", 'w')
+				fileOut.write(cmblFmt1)
+				fileOut.write("\n")
+				for counts in repeatedStatesList:
+					fileOut.write(str(counts))
+					fileOut.write("\n")
+				fileOut.write(cmblFmt2)
+				fileOut.write("\n")
+				for counts in repeatedStatesList:	
+					fileOut.write(str(repeatedStatesList[counts] ** 2))
+					fileOut.write("\n")
+				fileOut.write(cmblFmt3)
+				fileOut.write("\n")
+				fileOut.close()
+				
 
 				fileOut = open("HighAVG.cmbl", 'w')
 				fileOut.write(cmblFmt1)
